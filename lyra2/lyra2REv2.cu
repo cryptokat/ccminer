@@ -69,7 +69,7 @@ void lyra2v2_hash(void *state, const void *input)
 	sph_bmw256(&ctx_bmw, hashB, 32);
 	sph_bmw256_close(&ctx_bmw, hashA);
 
-	memcpy(state, hashA, 32);
+	cudaMemcpy(state, hashA, 32, cudaMemcpyDefault);
 }
 
 static bool init[MAX_GPUS] = { 0 };

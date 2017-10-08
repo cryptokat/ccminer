@@ -229,7 +229,7 @@ extern "C" void bitcore_hash(void *output, const void *input)
 		}
 	}
 
-	memcpy(output, hash, 32);
+	cudaMemcpy(output, hash, 32, cudaMemcpyDefault);
 }
 
 //#define _DEBUG
