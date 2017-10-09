@@ -76,13 +76,13 @@ extern "C" int scanhash_lyra2Z(int thr_id, struct work* work, uint32_t max_nonce
 		if (device_sm[dev_id] >= 350)
 		{
 			size_t matrix_sz = device_sm[dev_id] > 500 ? sizeof(uint64_t) * 4 * 4 : sizeof(uint64_t) * 8 * 8 * 3 * 4;
-			CUDA_SAFE_CALL(cudaMalloc(&d_matrix[thr_id], matrix_sz * throughput));
+			CUDA_SAFE_CALL(cudaMallocManaged(&d_matrix[thr_id], matrix_sz * throughput));
 			lyra2Z_cpu_init(thr_id, throughput, d_matrix[thr_id]);
 		}
 		else
 			lyra2Z_cpu_init_sm2(thr_id, throughput);
 
-		CUDA_SAFE_CALL(cudaMalloc(&d_hash[thr_id], (size_t)32 * throughput));
+		CUDA_SAFE_CALL(cudaMallocManaged(&d_hash[thr_id], (size_t)32 * throughput));
 
 		init[thr_id] = true;
 	}

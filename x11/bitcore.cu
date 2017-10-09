@@ -289,7 +289,7 @@ extern "C" int scanhash_bitcore(int thr_id, struct work* work, uint32_t max_nonc
 #if HASH_FUNC_COUNT > 10
 		x11_echo512_cpu_init(thr_id, throughput);
 #endif
-		CUDA_CALL_OR_RET_X(cudaMalloc(&d_hash[thr_id], (size_t) 64 * throughput), -1);
+		CUDA_CALL_OR_RET_X(cudaMallocManaged(&d_hash[thr_id], (size_t) 64 * throughput), -1);
 		CUDA_CALL_OR_RET_X(cudaMemset(d_hash[thr_id], 0, (size_t) 64 * throughput), -1);
 
 		cuda_check_cpu_init(thr_id, throughput);

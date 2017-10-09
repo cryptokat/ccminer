@@ -61,7 +61,7 @@ extern "C" void lyra2re_hash(void *state, const void *input)
 	sph_groestl256(&ctx_groestl, hashB, 32);
 	sph_groestl256_close(&ctx_groestl, hashA);
 
-	memcpy(state, hashA, 32);
+	cudaMemcpy(state, hashA, 32, cudaMemcpyDefault);
 }
 
 static bool init[MAX_GPUS] = { 0 };
@@ -104,11 +104,11 @@ extern "C" int scanhash_lyra2(int thr_id, struct work* work, uint32_t max_nonce,
 		if (device_sm[dev_id] >= 500)
 		{
 			size_t matrix_sz = device_sm[dev_id] > 500 ? sizeof(uint64_t) * 4 * 4 : sizeof(uint64_t) * 8 * 8 * 3 * 4;
-			CUDA_SAFE_CALL(cudaMalloc(&d_matrix[thr_id], matrix_sz * throughput));
+			CUDA_SAFE_CALL(cudaMallocManaged(&d_matrix[thr_id], matrix_sz * throughput));
 			lyra2_cpu_init(thr_id, throughput, d_matrix[thr_id]);
 		}
 
-		CUDA_SAFE_CALL(cudaMalloc(&d_hash[thr_id], (size_t)32 * throughput));
+		CUDA_SAFE_CALL(cudaMallocManaged(&d_hash[thr_id], (size_t)32 * throughput));
 
 		init[thr_id] = true;
 	}

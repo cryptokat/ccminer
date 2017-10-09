@@ -109,10 +109,10 @@ extern "C" int scanhash_lyra2v2(int thr_id, struct work* work, uint32_t max_nonc
 		if (device_sm[dev_id] < 500 || cuda_arch[dev_id] < 500)
 			matrix_sz = 16 * sizeof(uint64_t) * 4 * 4;
 			
-		CUDA_SAFE_CALL(cudaMalloc(&d_matrix[thr_id], matrix_sz * throughput));
+		CUDA_SAFE_CALL(cudaMallocManaged(&d_matrix[thr_id], matrix_sz * throughput));
 		lyra2v2_cpu_init(thr_id, throughput, d_matrix[thr_id]);
 
-		CUDA_SAFE_CALL(cudaMalloc(&d_hash[thr_id], (size_t)32 * throughput));
+		CUDA_SAFE_CALL(cudaMallocManaged(&d_hash[thr_id], (size_t)32 * throughput));
 
 		api_set_throughput(thr_id, throughput);
 		init[thr_id] = true;
