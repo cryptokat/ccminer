@@ -59,12 +59,14 @@ void algo_free_all(int thr_id)
 	free_cryptonight(thr_id);
 	free_decred(thr_id);
 	free_deep(thr_id);
+	free_equihash(thr_id);
 	free_keccak256(thr_id);
 	free_fresh(thr_id);
 	free_fugue256(thr_id);
 	free_groestlcoin(thr_id);
 	free_heavy(thr_id);
 	free_hmq17(thr_id);
+	free_hsr(thr_id);
 	free_jackpot(thr_id);
 	free_jha(thr_id);
 	free_lbry(thr_id);
