@@ -3912,6 +3912,8 @@ int main(int argc, char *argv[])
 	}
 
 	cuda_devicenames();
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, 64 * 1024 * 1024);
+    cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
 
 	/* parse command line */
 	parse_cmdline(argc, argv);
