@@ -98,7 +98,7 @@ bool allow_gbt = true;
 bool allow_mininginfo = true;
 bool check_dups = true; //false;
 bool check_stratum_jobs = false;
-
+bool opt_submit_stale = false;
 bool submit_old = false;
 bool use_syslog = false;
 bool use_colors = true;
@@ -254,7 +254,7 @@ Options:\n\
 			groestl     Groestlcoin\n\
 			heavy       Heavycoin\n\
 			hmq1725     Doubloons / Espers\n\
-			jha         JHA v8 (JackpotCoin)\n\
+			jackpot     JHA v8\n\
 			keccak      Keccak-256 (Maxcoin)\n\
 			lbry        LBRY Credits (Sha/Ripemd)\n\
 			luffa       Joincoin\n\
@@ -266,6 +266,7 @@ Options:\n\
 			neoscrypt   FeatherCoin, Phoenix, UFO...\n\
 			nist5       NIST5 (TalkCoin)\n\
 			penta       Pentablake hash (5x Blake 512)\n\
+			phi         BHCoin\n\
 			quark       Quark\n\
 			qubit       Qubit\n\
 			sha256d     SHA256d (bitcoin)\n\
@@ -279,7 +280,7 @@ Options:\n\
 			skunk       Skein Cube Fugue Streebog\n\
 			s3          S3 (1Coin)\n\
 			timetravel  Machinecoin permuted x8\n\
-			tribus      Denerius\n\
+			tribus      Denarius\n\
 			vanilla     Blake256-8 (VNL)\n\
 			veltor      Thorsriddle streebog\n\
 			whirlcoin   Old Whirlcoin (Whirlpool algo)\n\
@@ -318,6 +319,7 @@ Options:\n\
   -T, --timeout=N       network timeout, in seconds (default: 300)\n\
   -s, --scantime=N      upper bound on time spent scanning current work when\n\
                           long polling is unavailable, in seconds (default: 10)\n\
+      --submit-stale    ignore stale jobs checks, may create more rejected shares\n\
   -n, --ndevs           list cuda devices\n\
   -N, --statsavg        number of samples used to compute hashrate (default: 30)\n\
       --no-gbt          disable getblocktemplate support (height check in solo)\n\
@@ -430,7 +432,8 @@ struct option options[] = {
 	{ "retries", 1, NULL, 'r' },
 	{ "retry-pause", 1, NULL, 'R' },
 	{ "scantime", 1, NULL, 's' },
-	{ "show-diff", 0, NULL, 1013 },
+	{ "show-diff", 0, NULL, 1013 }, // deprecated
+	{ "submit-stale", 0, NULL, 1015 },
 	{ "hide-diff", 0, NULL, 1014 },
 	{ "statsavg", 1, NULL, 'N' },
 	{ "gpu-clock", 1, NULL, 1070 },
@@ -896,7 +899,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 
 	/* discard if a newer block was received */
 	stale_work = work->height && work->height < g_work.height;
-	if (have_stratum && !stale_work && opt_algo != ALGO_ZR5 && opt_algo != ALGO_SCRYPT_JANE) {
+	if (have_stratum && !stale_work && !opt_submit_stale && opt_algo != ALGO_ZR5 && opt_algo != ALGO_SCRYPT_JANE) {
 		pthread_mutex_lock(&g_work_lock);
 		if (strlen(work->job_id + 8))
 			stale_work = strncmp(work->job_id + 8, g_work.job_id + 8, sizeof(g_work.job_id) - 8);
@@ -2224,7 +2227,9 @@ static void *miner_thread(void *userdata)
 			case ALGO_HEAVY:
 			case ALGO_JACKPOT:
 			case ALGO_JHA:
+			case ALGO_HSR:
 			case ALGO_LYRA2v2:
+			case ALGO_PHI:
 			case ALGO_S3:
 			case ALGO_SKUNK:
 			case ALGO_TIMETRAVEL:
@@ -2355,6 +2360,9 @@ static void *miner_thread(void *userdata)
 		case ALGO_HMQ1725:
 			rc = scanhash_hmq17(thr_id, &work, max_nonce, &hashes_done);
 			break;
+		case ALGO_HSR:
+			rc = scanhash_hsr(thr_id, &work, max_nonce, &hashes_done);
+			break;
 
 		case ALGO_HEAVY:
 			rc = scanhash_heavy(thr_id, &work, max_nonce, &hashes_done, work.maxvote, HEAVYCOIN_BLKHDR_SZ);
@@ -2403,6 +2411,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_PENTABLAKE:
 			rc = scanhash_pentablake(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_PHI:
+			rc = scanhash_phi(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_SCRYPT:
 			rc = scanhash_scrypt(thr_id, &work, max_nonce, &hashes_done,
@@ -3523,6 +3534,9 @@ void parse_arg(int key, char *arg)
 	case 1014:
 		opt_showdiff = false;
 		break;
+	case 1015:
+		opt_submit_stale = true;
+		break;
 	case 'S':
 	case 1018:
 		applog(LOG_INFO, "Now logging to syslog...");
@@ -3591,10 +3605,10 @@ void parse_arg(int key, char *arg)
 		{
 			int device_thr[MAX_GPUS] = { 0 };
 			int ngpus = cuda_num_devices();
-			char * pch = strtok (arg,",");
+			char* pch = strtok(arg,",");
 			opt_n_threads = 0;
 			while (pch != NULL && opt_n_threads < MAX_GPUS) {
-				if (pch[0] >= '0' && pch[0] <= '9' && pch[1] == '\0')
+				if (pch[0] >= '0' && pch[0] <= '9' && strlen(pch) <= 2)
 				{
 					if (atoi(pch) < ngpus)
 						device_map[opt_n_threads++] = atoi(pch);
@@ -3845,7 +3859,7 @@ int main(int argc, char *argv[])
 #endif
 			CUDART_VERSION/1000, (CUDART_VERSION % 1000)/10, arch);
 		printf("  Originally based on Christian Buchner and Christian H. project\n");
-		printf("  Include some algos from alexis78, djm34, sp, tsiv and klausT.\n\n");
+		printf("  Include some kernels from alexis78, djm34, djEzo, tsiv and krnlx.\n\n");
 		printf("BTC donation address: 1AJdfCpLWPNoAMDfHF1wD5y8VgKSSTHxPo (tpruvot)\n\n");
 	}
 
