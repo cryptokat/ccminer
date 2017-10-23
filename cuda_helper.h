@@ -102,7 +102,7 @@ __device__ __forceinline__ uint64_t REPLACE_LODWORD(const uint64_t &x, const uin
 	return (x & 0xFFFFFFFF00000000ULL) | ((uint64_t)y);
 }
 
-// Endian Drehung für 32 Bit Typen
+// Endian Drehung fï¿½r 32 Bit Typen
 #ifdef __CUDA_ARCH__
 __device__ __forceinline__ uint32_t cuda_swab32(uint32_t x)
 {
@@ -380,56 +380,11 @@ uint64_t ROTR64(const uint64_t x, const int offset)
 #endif
 
 // 64-bit ROTATE LEFT
-#if __CUDA_ARCH__ >= 320 && USE_ROT_ASM_OPT == 1
-__device__ __forceinline__
-uint64_t ROTL64(const uint64_t value, const int offset) {
-	uint2 result;
-	if(offset >= 32) {
-		asm("shf.l.wrap.b32 %0, %1, %2, %3;" : "=r"(result.x) : "r"(__double2loint(__longlong_as_double(value))), "r"(__double2hiint(__longlong_as_double(value))), "r"(offset));
-		asm("shf.l.wrap.b32 %0, %1, %2, %3;" : "=r"(result.y) : "r"(__double2hiint(__longlong_as_double(value))), "r"(__double2loint(__longlong_as_double(value))), "r"(offset));
-	} else {
-		asm("shf.l.wrap.b32 %0, %1, %2, %3;" : "=r"(result.x) : "r"(__double2hiint(__longlong_as_double(value))), "r"(__double2loint(__longlong_as_double(value))), "r"(offset));
-		asm("shf.l.wrap.b32 %0, %1, %2, %3;" : "=r"(result.y) : "r"(__double2loint(__longlong_as_double(value))), "r"(__double2hiint(__longlong_as_double(value))), "r"(offset));
-	}
-	return  __double_as_longlong(__hiloint2double(result.y, result.x));
-}
-#elif __CUDA_ARCH__ >= 120 && USE_ROT_ASM_OPT == 2
-__device__ __forceinline__
-uint64_t ROTL64(const uint64_t x, const int offset)
+__device__ __host__ __forceinline__
+		uint64_t ROTL64(const uint64_t x, const uint8_t n)
 {
-	uint64_t result;
-	asm("{ // ROTL64 \n\t"
-		".reg .b64 lhs;\n\t"
-		".reg .u32 roff;\n\t"
-		"shl.b64 lhs, %1, %2;\n\t"
-		"sub.u32 roff, 64, %2;\n\t"
-		"shr.b64 %0, %1, roff;\n\t"
-		"add.u64 %0, lhs, %0;\n\t"
-	"}\n" : "=l"(result) : "l"(x), "r"(offset));
-	return result;
+	return (x << n) | (x >> (64 - n));
 }
-#elif __CUDA_ARCH__ >= 320 && USE_ROT_ASM_OPT == 3
-__device__
-uint64_t ROTL64(const uint64_t x, const int offset)
-{
-	uint64_t res;
-	asm("{ // ROTL64 \n\t"
-		".reg .u32 tl,th,vl,vh;\n\t"
-		".reg .pred p;\n\t"
-		"mov.b64 {tl,th}, %1;\n\t"
-		"shf.l.wrap.b32 vl, tl, th, %2;\n\t"
-		"shf.l.wrap.b32 vh, th, tl, %2;\n\t"
-		"setp.lt.u32 p, %2, 32;\n\t"
-		"@!p mov.b64 %0, {vl,vh};\n\t"
-		"@p  mov.b64 %0, {vh,vl};\n\t"
-	"}\n" : "=l"(res) : "l"(x) , "r"(offset)
-	);
-	return res;
-}
-#else
-/* host */
-#define ROTL64(x, n)  (((x) << (n)) | ((x) >> (64 - (n))))
-#endif
 
 __device__ __forceinline__
 uint64_t SWAPDWORDS(uint64_t value)

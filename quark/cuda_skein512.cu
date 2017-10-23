@@ -457,6 +457,8 @@ __constant__ const uint2 buffer[112] = {
 	{0x98173EC4, 0xCAB2076D}, {0x749C51CE, 0x3903ADFF}, {0x9746DF43, 0xFD95DE39}, {0x27C79BDB, 0x8FD19341}
 };
 
+#include "quark/cuda_skein512_fast.cu"
+
 __global__
 #if __CUDA_ARCH__ > 500
 __launch_bounds__(TPB52, 3)
@@ -1101,3 +1103,338 @@ void quark_skein512_cpu_init(int thr_id, uint32_t threads)
 	cuda_get_arch(thr_id);
 }
 
+__host__
+void skein512_cpu_setBlock_80_6x(int thr_id, void *pdata)
+{
+    uint64_t *PaddedMessage = (uint64_t*)pdata;
+    CUDA_SAFE_CALL(cudaMalloc(&(d_nonce[thr_id]), 2 * sizeof(uint32_t)));
+    CUDA_SAFE_CALL(cudaMemcpyToSymbolAsync(c_PaddedMessage80, &PaddedMessage[8], 8 * 2, 0, cudaMemcpyHostToDevice, gpustream[thr_id]));
+    CUDA_SAFE_CALL(cudaMemsetAsync(d_nonce[thr_id], 0xff, 2 * sizeof(uint32_t), gpustream[thr_id]));
+
+    precalc(thr_id, PaddedMessage);
+}
+
+__global__
+__launch_bounds__(TPB52)
+void skein512_gpu_hash_80_6x(uint32_t threads, uint32_t startNounce, uint32_t *const __restrict__ d_nonce, uint64_t target, int thr_id)
+{
+    const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
+    //	if (thread < threads)
+    {
+        uint64_t h8;
+        uint64_t p[8];
+
+        uint64_t h0 = precalcvalues[0];
+        uint64_t h1 = precalcvalues[1];
+        uint64_t h2 = precalcvalues[2];
+        uint64_t h3 = precalcvalues[3];
+        uint64_t h4 = precalcvalues[4];
+        uint64_t h5 = precalcvalues[5];
+        uint64_t h6 = precalcvalues[6];
+        uint64_t h7 = precalcvalues[7];
+        uint64_t t2 = precalcvalues[8];
+
+        const uint64_t nounce2 = (c_PaddedMessage80[1] & 0x00000000ffffffff) + ((uint64_t)cuda_swab32(startNounce + thread) << 32);
+
+        uint64_t t0 = 0x50; // SPH_T64(bcount << 6) + (sph_u64)(extra);
+        uint64_t t1 = 0xB000000000000000; // (bcount >> 58) + ((sph_u64)(etype) << 55);
+        h8 = h0 ^ h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ h7 ^ 0x1BD11BDAA9FC1A22;
+        t2 = t0 ^ t1;
+
+        p[0] = h0 + c_PaddedMessage80[0];
+        p[1] = h1 + nounce2;
+        p[2] = h2;
+        p[3] = h3;
+        p[4] = h4;
+        p[5] = h5 + t0;
+        p[6] = h6 + t1;
+        p[7] = h7;
+
+        TFBIG_MIX8_PRE(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], 46, 36, 19, 37);
+        TFBIG_MIX8_PRE(p[2], p[1], p[4], p[7], p[6], p[5], p[0], p[3], 33, 27, 14, 42);
+        TFBIG_MIX8_PRE(p[4], p[1], p[6], p[3], p[0], p[5], p[2], p[7], 17, 49, 36, 39);
+        TFBIG_MIX8_PRE(p[6], p[1], p[0], p[7], p[2], p[5], p[4], p[3], 44, 9, 54, 56);
+
+        TFBIG_4o_PRE(1);
+        TFBIG_4e_PRE(2);
+        TFBIG_4o_PRE(3);
+        TFBIG_4e_PRE(4);
+        TFBIG_4o_PRE(5);
+        TFBIG_4e_PRE(6);
+        TFBIG_4o_PRE(7);
+        TFBIG_4e_PRE(8);
+        TFBIG_4o_PRE(9);
+        TFBIG_4e_PRE(10);
+        TFBIG_4o_PRE(11);
+        TFBIG_4e_PRE(12);
+        TFBIG_4o_PRE(13);
+        TFBIG_4e_PRE(14);
+        TFBIG_4o_PRE(15);
+        TFBIG_4e_PRE(16);
+        TFBIG_4o_PRE(17);
+        TFBIG_ADDKEY_PRE(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], h, t, 18);
+
+
+        t0 = 8; // extra
+        t1 = 0xFF00000000000000; // etype
+
+        h0 = c_PaddedMessage80[0] ^ p[0];
+        h1 = nounce2 ^ p[1];
+        h2 = p[2];
+        h3 = p[3];
+        h4 = p[4];
+        h5 = p[5];
+        h6 = p[6];
+        h7 = p[7];
+
+        h8 = h0 ^ h1 ^ p[2] ^ p[3] ^ p[4] ^ p[5] ^ p[6] ^ p[7] ^ 0x1BD11BDAA9FC1A22;
+        t2 = 0xFF00000000000008;
+
+        // p[8] = { 0 };
+#pragma unroll 8
+        for(int i = 0; i<8; i++)
+            p[i] = 0;
+
+        TFBIG_4e_PRE(0);
+        TFBIG_4o_PRE(1);
+        TFBIG_4e_PRE(2);
+        TFBIG_4o_PRE(3);
+        TFBIG_4e_PRE(4);
+        TFBIG_4o_PRE(5);
+        TFBIG_4e_PRE(6);
+        TFBIG_4o_PRE(7);
+        TFBIG_4e_PRE(8);
+        TFBIG_4o_PRE(9);
+        TFBIG_4e_PRE(10);
+        TFBIG_4o_PRE(11);
+        TFBIG_4e_PRE(12);
+        TFBIG_4o_PRE(13);
+        TFBIG_4e_PRE(14);
+        TFBIG_4o_PRE(15);
+        TFBIG_4e_PRE(16);
+        TFBIG_4o_PRE(17);
+        TFBIG_ADDKEY_PRE(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], h, t, 18);
+
+        uint32_t *message = (uint32_t *)p;
+
+        uint32_t W1[16];
+        uint32_t W2[16];
+
+        uint32_t regs[8] = {
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        };
+        uint32_t hash[8] = {
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        };
+
+#pragma unroll 16
+        for(int k = 0; k<16; k++)
+            W1[k] = SWAB32(message[k]);
+
+        // Progress W1
+#pragma unroll 16
+        for(int j = 0; j<16; j++)
+        {
+            uint32_t T1, T2;
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j] + W1[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+
+        // Progress W2...W3
+
+        ////// PART 1
+#pragma unroll 2
+        for(int j = 0; j<2; j++)
+            W2[j] = s1(W1[14 + j]) + W1[9 + j] + s0(W1[1 + j]) + W1[j];
+#pragma unroll 5
+        for(int j = 2; j<7; j++)
+            W2[j] = s1(W2[j - 2]) + W1[9 + j] + s0(W1[1 + j]) + W1[j];
+
+#pragma unroll 8
+        for(int j = 7; j<15; j++)
+            W2[j] = s1(W2[j - 2]) + W2[j - 7] + s0(W1[1 + j]) + W1[j];
+
+        W2[15] = s1(W2[13]) + W2[8] + s0(W2[0]) + W1[15];
+
+        // Round function
+#pragma unroll 16
+        for(int j = 0; j<16; j++)
+        {
+            uint32_t T1, T2;
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j + 16] + W2[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+
+        ////// PART 2
+#pragma unroll 2
+        for(int j = 0; j<2; j++)
+            W1[j] = s1(W2[14 + j]) + W2[9 + j] + s0(W2[1 + j]) + W2[j];
+
+#pragma unroll 5
+        for(int j = 2; j<7; j++)
+            W1[j] = s1(W1[j - 2]) + W2[9 + j] + s0(W2[1 + j]) + W2[j];
+
+#pragma unroll 8
+        for(int j = 7; j<15; j++)
+            W1[j] = s1(W1[j - 2]) + W1[j - 7] + s0(W2[1 + j]) + W2[j];
+
+        W1[15] = s1(W1[13]) + W1[8] + s0(W1[0]) + W2[15];
+
+        // Round function
+#pragma unroll 16
+        for(int j = 0; j<16; j++)
+        {
+            uint32_t T1, T2;
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j + 32] + W1[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+
+        ////// PART 3
+#pragma unroll 2
+        for(int j = 0; j<2; j++)
+            W2[j] = s1(W1[14 + j]) + W1[9 + j] + s0(W1[1 + j]) + W1[j];
+
+#pragma unroll 5
+        for(int j = 2; j<7; j++)
+            W2[j] = s1(W2[j - 2]) + W1[9 + j] + s0(W1[1 + j]) + W1[j];
+
+#pragma unroll 8
+        for(int j = 7; j<15; j++)
+            W2[j] = s1(W2[j - 2]) + W2[j - 7] + s0(W1[1 + j]) + W1[j];
+
+        W2[15] = s1(W2[13]) + W2[8] + s0(W2[0]) + W1[15];
+
+        // Round function
+#pragma unroll 16
+        for(int j = 0; j<16; j++)
+        {
+            uint32_t T1, T2;
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j + 48] + W2[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+
+#pragma unroll 8
+        for(int k = 0; k<8; k++)
+            hash[k] += regs[k];
+
+        /////
+        ///// Second Pass (ending)
+        /////
+#pragma unroll 8
+        for(int k = 0; k<8; k++)
+            regs[k] = hash[k];
+
+        // Progress W1
+        uint32_t T1, T2;
+        T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[0] + sha256_endingTable[0];
+        T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+        regs[7] = regs[6];
+        regs[6] = regs[5];
+        regs[5] = regs[4];
+        regs[4] = regs[3] + T1;
+        regs[3] = regs[2];
+        regs[2] = regs[1];
+        regs[1] = regs[0];
+        regs[0] = T1 + T2;
+#pragma unroll
+        for(int j = 1; j<15; j++)
+        {
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+#pragma unroll
+        for(int j = 15; j<56; j++)
+        {
+            T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[j] + sha256_endingTable[j];
+            T2 = S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+
+            regs[7] = regs[6];
+            regs[6] = regs[5];
+            regs[5] = regs[4];
+            regs[4] = regs[3] + T1;
+            regs[3] = regs[2];
+            regs[2] = regs[1];
+            regs[1] = regs[0];
+            regs[0] = T1 + T2;
+        }
+
+        T1 = regs[7] + S1(regs[4]) + Ch(regs[4], regs[5], regs[6]) + sha256_constantTable[56] + sha256_endingTable[56];
+        regs[7] = T1 + S0(regs[0]) + Maj(regs[0], regs[1], regs[2]);
+        regs[3] += T1;
+
+        T1 = regs[6] + S1(regs[3]) + Ch(regs[3], regs[4], regs[5]) + sha256_constantTable[57] + sha256_endingTable[57];
+        regs[6] = T1 + S0(regs[7]) + Maj(regs[7], regs[0], regs[1]);
+        regs[2] += T1;
+        //************
+        regs[1] += regs[5] + S1(regs[2]) + Ch(regs[2], regs[3], regs[4]) + sha256_constantTable[58] + sha256_endingTable[58];
+        regs[0] += regs[4] + S1(regs[1]) + Ch(regs[1], regs[2], regs[3]) + sha256_constantTable[59] + sha256_endingTable[59];
+        regs[7] += regs[3] + S1(regs[0]) + Ch(regs[0], regs[1], regs[2]) + sha256_constantTable[60] + sha256_endingTable[60];
+        regs[6] += regs[2] + S1(regs[7]) + Ch(regs[7], regs[0], regs[1]) + sha256_constantTable[61] + sha256_endingTable[61];
+
+        uint64_t test = SWAB32(hash[7] + regs[7]);
+        test <<= 32;
+        test |= SWAB32(hash[6] + regs[6]);
+        if(test <= target)
+        {
+            uint32_t tmp = atomicExch(&(d_nonce[0]), startNounce + thread);
+            if(tmp != 0xffffffff)
+                d_nonce[1] = tmp;
+        }
+    }
+}
+
+__host__
+void skein512_cpu_hash_80_6x(int thr_id, uint32_t threads, uint32_t startNounce, int swapu, uint64_t target, uint32_t *h_found)
+{
+    dim3 grid((threads + TPB52 - 1) / TPB52);
+    dim3 block(TPB52);
+    skein512_gpu_hash_80_6x << < grid, block, 0, gpustream[thr_id] >> > (threads, startNounce, d_nonce[thr_id], target, thr_id);
+    CUDA_SAFE_CALL(cudaMemcpyAsync(h_found, d_nonce[thr_id], 2 * sizeof(uint32_t), cudaMemcpyDeviceToHost, gpustream[thr_id]));
+    CUDA_SAFE_CALL(cudaStreamSynchronize(gpustream[thr_id]));
+}

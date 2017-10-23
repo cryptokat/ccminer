@@ -20,9 +20,8 @@ extern "C" {
 #include "miner.h"
 #include "cuda_helper.h"
 #include "cuda_x11.h"
-
-extern void skein512_cpu_setBlock_80(void *pdata);
-extern void skein512_cpu_hash_80(int thr_id, uint32_t threads, uint32_t startNonce, uint32_t *d_hash, int swap);
+extern void skein512_cpu_hash_80_6x(int thr_id, uint32_t threads, uint32_t startNounce, int swapu, uint64_t target, uint32_t *h_found);
+extern void skein512_cpu_setBlock_80_6x(int thr_id, void *pdata);
 extern void streebog_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash);
 extern void streebog_hash_64_maxwell(int thr_id, uint32_t threads, uint32_t *d_hash);
 
@@ -98,8 +97,9 @@ extern "C" int scanhash_phi(int thr_id, struct work* work, uint32_t max_nonce, u
 
 	if (opt_benchmark)
 		ptarget[7] = 0xf;
+    uint64_t target = ((uint64_t*)ptarget)[3];
 
-	if (!init[thr_id])
+    if (!init[thr_id])
 	{
 		cudaSetDevice(dev_id);
 		if (opt_cudaschedule == -1 && gpu_threads == 1) {
@@ -132,7 +132,7 @@ extern "C" int scanhash_phi(int thr_id, struct work* work, uint32_t max_nonce, u
 	for (int k = 0; k < 20; k++)
 		be32enc(&endiandata[k], pdata[k]);
 
-	skein512_cpu_setBlock_80((void*)endiandata);
+    skein512_cpu_setBlock_80_6x(thr_id, (void*)endiandata);
 	if (use_compat_kernels[thr_id])
 		cuda_check_cpu_setTarget(ptarget);
 	else
@@ -141,7 +141,8 @@ extern "C" int scanhash_phi(int thr_id, struct work* work, uint32_t max_nonce, u
 	do {
 		int order = 0;
 
-		skein512_cpu_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id], 1); order++;
+        skein512_cpu_hash_80_6x(thr_id, throughput, pdata[19], 1, target, d_hash[thr_id]); order++;
+
 		quark_jh512_cpu_hash_64(thr_id, throughput, pdata[19], NULL, d_hash[thr_id], order++);
 		x11_cubehash512_cpu_hash_64(thr_id, throughput, pdata[19], NULL, d_hash[thr_id], order++);
 		x13_fugue512_cpu_hash_64(thr_id, throughput, pdata[19], NULL, d_hash[thr_id], order++);
